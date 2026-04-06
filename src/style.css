@@ -1,0 +1,175 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0605;
+}
+#app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  min-height: 100%;
+}
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  vertical-align: top;
+}
+canvas {
+  display: block;
+}
+
+.mission-hud {
+  position: fixed;
+  left: 14px;
+  top: 12px;
+  color: #e8e0d8;
+  font: 13px/1.45 system-ui, sans-serif;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  max-width: 320px;
+}
+
+.mission-hud__top {
+  background: rgba(8, 6, 5, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.mission-hud__row {
+  margin-top: 6px;
+}
+
+.mission-hud__row:first-child {
+  margin-top: 0;
+}
+
+.mission-hud__fuel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mission-hud__bar-wrap {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mission-hud__bar-fill {
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3a6a88, #6ab0c8);
+  transition: width 0.12s ease-out;
+}
+
+.mission-hud__bar-fill--integrity {
+  background: linear-gradient(90deg, #3a5a40, #6ab888);
+}
+
+.mission-hud__bar-fill--integrity.mission-hud__bar-fill--low {
+  background: linear-gradient(90deg, #6a3020, #a84830);
+}
+
+.mission-hud__bar-fill--extract {
+  background: linear-gradient(90deg, #2a5a48, #4ad8a0);
+}
+
+.mission-hud__storm--urgent .mission-hud__label,
+.mission-hud__storm--urgent .mission-hud__value {
+  color: #e8c8a0;
+  animation: stormPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes stormPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.mission-hud__extract--hidden {
+  display: none;
+}
+
+.mission-hud__extract {
+  margin-top: 4px;
+}
+
+.mission-hud__variant {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #9a9288;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mission-hud__wall-warn {
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f0c8c0;
+  background: rgba(80, 28, 28, 0.45);
+  border: 1px solid rgba(255, 120, 100, 0.35);
+}
+
+.mission-hud__wall-warn--hidden {
+  display: none;
+}
+
+.mission-hud__label {
+  color: #b8b0a8;
+  margin-right: 6px;
+}
+
+.mission-hud__value {
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  letter-spacing: 0.02em;
+}
+
+.mission-hud__muted .mission-hud__label,
+.mission-hud__muted .mission-hud__value {
+  color: #8a8278;
+}
+
+.mission-hud__overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(6, 4, 3, 0.72);
+  color: #f0ebe6;
+  font: 600 26px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.mission-hud__overlay--hidden {
+  display: none;
+}
+
+.mission-hud__overlay-hint {
+  font-size: 15px;
+  font-weight: 400;
+  color: #c8c0b8;
+  white-space: pre-line;
+  margin-top: 10px;
+  max-width: 420px;
+}
