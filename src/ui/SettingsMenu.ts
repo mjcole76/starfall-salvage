@@ -433,6 +433,7 @@ export class SettingsMenu {
       { id: "desert_noir", label: "Noir" },
       { id: "ghost_signal", label: "Ghost" },
       { id: "iron_drift", label: "Iron" },
+      { id: "desert_adventure", label: "Adventure" },
     ];
 
     const buttons: HTMLButtonElement[] = [];

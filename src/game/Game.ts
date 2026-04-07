@@ -81,6 +81,19 @@ import { DashAfterimage } from "../effects/DashAfterimage";
 import { DamageVignette } from "../effects/DamageVignette";
 import { createDesertEnvironment } from "../world/desertEnvironment";
 import { createTerrain } from "../world/Terrain";
+import {
+  createDustStormState,
+  tickDustStorm,
+  getDustStormLine,
+  DustStormVisual,
+  type DustStormState,
+} from "../mission/dustStorm";
+import {
+  createShelters,
+  disposeShelters,
+  isInShelter,
+  type Shelter,
+} from "../mission/shelters";
 
 const ENDGAME_MUSIC_LAST_SEC = 30;
 const STORM_WARN_REMAINING_SEC = 60;
@@ -159,6 +172,9 @@ export class Game {
   private dashAfterimage!: DashAfterimage;
   private damageVignette!: DamageVignette;
   private wasDashing = false;
+  private dustStormState!: DustStormState;
+  private dustStormVisual!: DustStormVisual;
+  private shelters: Shelter[] = [];
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -252,6 +268,8 @@ export class Game {
     this.sandstorm = new SandstormOverlay(this.container);
     this.dashAfterimage = new DashAfterimage(this.scene);
     this.damageVignette = new DamageVignette(this.container);
+    this.dustStormState = createDustStormState();
+    this.dustStormVisual = new DustStormVisual(this.scene);
 
     // Load saved currency
     const saved = UpgradeShop.loadState();
@@ -431,10 +449,30 @@ export class Game {
           ) > safeR;
         this.hud.setOutsideStormWall(outsideWall);
 
+        // Dust storm
+        const playerSheltered = isInShelter(this.player.root.position, this.shelters);
+        const dustTick = tickDustStorm(
+          this.dustStormState,
+          this.player.root.position,
+          dt,
+          this.dash.isInvulnerable,
+          playerSheltered
+        );
+        if (dustTick.warnTriggered) {
+          this.sfx.dustStormWarning();
+          this.barks.play("dustStormWarning");
+          this.postfx.shake(0.1, 0.3);
+        }
+        if (dustTick.playerInStorm) {
+          this.sfx.dustStormHit();
+          this.postfx.shake(0.35, 0.2);
+        }
+        this.dustStormVisual.update(this.dustStormState, dt, this.missionElapsed);
+
         // Apply damage (respect dash invulnerability)
         const totalLoss = this.dash.isInvulnerable
           ? 0
-          : hz.integrityLoss + wallDps * dt + droneTick.integrityLoss;
+          : hz.integrityLoss + wallDps * dt + droneTick.integrityLoss + dustTick.integrityLoss;
         this.integrity = Math.max(0, this.integrity - totalLoss);
 
         // Damage screen effects
@@ -560,7 +598,8 @@ export class Game {
         this.player.root.position.z - sscz
       );
       const stormProximity = THREE.MathUtils.clamp((pDist / Math.max(1, ssR)) - 0.5, 0, 1);
-      this.sandstorm.setIntensity(stormProximity * 0.6 + stormT * 0.4);
+      const dustBoost = this.dustStormState.phase === "active" ? 0.5 : this.dustStormState.phase === "warning" ? 0.25 : 0;
+      this.sandstorm.setIntensity(stormProximity * 0.6 + stormT * 0.4 + dustBoost);
       this.sandstorm.update(dt);
 
       // Damage vignette
@@ -698,6 +737,16 @@ export class Game {
       });
     }
 
+    // Shelters
+    for (const s of this.shelters) {
+      markers.push({
+        x: s.center.x,
+        z: s.center.z,
+        type: "shelter",
+        radius: s.radius,
+      });
+    }
+
     const [scx, scz] = this.variant.stormCenter;
     const safeR = safeZoneRadius(this.variant, this.missionElapsed);
 
@@ -707,7 +756,8 @@ export class Game {
       this.player.getFacing(),
       markers,
       safeR, scx, scz,
-      dt
+      dt,
+      getDustStormLine(this.dustStormState)
     );
   }
 
@@ -727,6 +777,7 @@ export class Game {
     this.stormTimeLimit = this.variant.stormTimeLimitSec;
     this.prevStormLeft = this.stormTimeLimit;
     this.hazards = createHazardZones(this.terrain, this.scene, this.variant.hazardLayout);
+    this.shelters = createShelters(this.terrain, this.scene);
     this.cores = createEnergyCores(this.terrain, this.scene, this.variant.cores);
     this.salvage = createSalvagePickups(this.terrain, this.scene, this.variant.salvage);
     this.fuelCans = createFuelPickups(this.terrain, this.scene, this.variant.fuelPickups);
@@ -771,6 +822,8 @@ export class Game {
   private teardownPickups(): void {
     disposeHazardZones(this.hazards);
     this.hazards = [];
+    disposeShelters(this.shelters);
+    this.shelters = [];
     for (const c of this.cores) c.group.removeFromParent();
     this.cores = [];
     for (const s of this.salvage) s.group.removeFromParent();
@@ -1043,6 +1096,7 @@ export class Game {
     this.damageVignette.setIntegrity(this.maxIntegrity);
     this.sandstorm.setIntensity(0);
     this.wasDashing = false;
+    this.dustStormState = createDustStormState();
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");

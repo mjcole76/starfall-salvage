@@ -16,7 +16,8 @@ export type MinimapMarker = {
     | 'heat'
     | 'drone'
     | 'fuel'
-    | 'repair';
+    | 'repair'
+    | 'shelter';
   radius?: number; // world-units, used for zone markers
 };
 
@@ -110,6 +111,7 @@ export class Minimap {
     stormCenterX: number,
     stormCenterZ: number,
     dt: number,
+    dustStormLine?: { cx: number; cz: number; angle: number; depth: number } | null,
   ): void {
     const ctx = this.ctx;
     const ppu = MAP_DIAMETER / this.scale; // pixels per world-unit
@@ -197,10 +199,32 @@ export class Minimap {
     }
 
     // ------------------------------------------------------------------
+    // Dust storm line
+    // ------------------------------------------------------------------
+    if (dustStormLine) {
+      const [dsx, dsy] = worldToMinimap(dustStormLine.cx, dustStormLine.cz, playerX, playerZ, ppu);
+      const lineHalf = 120 * ppu; // wide enough to span the map
+      const perpAngle = dustStormLine.angle + Math.PI / 2;
+      const cosP = Math.cos(perpAngle);
+      const sinP = Math.sin(perpAngle);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 160, 30, 0.85)';
+      ctx.lineWidth = Math.max(2, dustStormLine.depth * ppu);
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(dsx - cosP * lineHalf, dsy + sinP * lineHalf);
+      ctx.lineTo(dsx + cosP * lineHalf, dsy - sinP * lineHalf);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // ------------------------------------------------------------------
     // Markers (zones first, then items, then entities)
     // ------------------------------------------------------------------
     // Sort so zones render behind dots
-    const zoneTypes = new Set<string>(['radiation', 'heat', 'extraction', 'extraction_active']);
+    const zoneTypes = new Set<string>(['radiation', 'heat', 'extraction', 'extraction_active', 'shelter']);
     const zones: MinimapMarker[] = [];
     const points: MinimapMarker[] = [];
 
@@ -234,6 +258,10 @@ export class Minimap {
         case 'extraction_active':
           ctx.fillStyle = 'rgba(0, 255, 80, 0.18)';
           ctx.strokeStyle = 'rgba(0, 255, 80, 0.8)';
+          break;
+        case 'shelter':
+          ctx.fillStyle = 'rgba(200, 160, 60, 0.18)';
+          ctx.strokeStyle = 'rgba(200, 160, 60, 0.65)';
           break;
       }
 

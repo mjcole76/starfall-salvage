@@ -31,7 +31,7 @@ const C2 = 36, E2 = 40, G3 = 55, D3 = 50, F3 = 53;
 // Music Presets
 // ---------------------------------------------------------------------------
 
-export type MusicPresetId = 'dark_ambient' | 'synth_drive' | 'desert_noir' | 'ghost_signal' | 'iron_drift';
+export type MusicPresetId = 'dark_ambient' | 'synth_drive' | 'desert_noir' | 'ghost_signal' | 'iron_drift' | 'desert_adventure';
 
 export interface MusicPreset {
   readonly id: MusicPresetId;
@@ -149,6 +149,26 @@ export const MUSIC_PRESETS: Record<MusicPresetId, MusicPreset> = {
     hatMix: 1.2,
     sweepQ: 10,
     alarmFreqs: [988, 740],
+  },
+  desert_adventure: {
+    id: 'desert_adventure',
+    name: 'Desert Adventure',
+    chords: [
+      [D2, F2+1, A2],     // Dm (with raised 3rd flavor)
+      [G2, B2, D3],       // G major — heroic lift
+      [A2, C3+1, E3],     // A major — bright tension
+      [F2, A2, C3],       // F major — resolve
+    ],
+    roots: [D2, G2, A2, F2],
+    bpmNormal: 118,
+    bpmUrgent: 138,
+    beatsPerChord: 4,
+    padWaveform: 'sawtooth',
+    padFilterBase: 550,
+    bassWaveform: 'sawtooth',
+    hatMix: 1.3,
+    sweepQ: 8,
+    alarmFreqs: [880, 1046],
   },
 };
 

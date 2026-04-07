@@ -226,6 +226,60 @@ export class GameSfx {
     osc.stop(t0 + 0.6);
   }
 
+  /** Dust storm incoming — deep rumble + rising wind */
+  dustStormWarning(): void {
+    const ctx = this.getCtx();
+    const bus = this.bus();
+    if (!ctx || !bus) return;
+    const t0 = now(ctx);
+
+    // Deep rumble
+    const rumble = ctx.createOscillator();
+    rumble.type = "sawtooth";
+    rumble.frequency.setValueAtTime(45, t0);
+    rumble.frequency.exponentialRampToValueAtTime(80, t0 + 1.2);
+    const rg = ctx.createGain();
+    rg.gain.setValueAtTime(0.0001, t0);
+    rg.gain.exponentialRampToValueAtTime(0.14, t0 + 0.3);
+    rg.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.5);
+    const rlp = ctx.createBiquadFilter();
+    rlp.type = "lowpass";
+    rlp.frequency.value = 180;
+    rumble.connect(rlp);
+    rlp.connect(rg);
+    rg.connect(bus);
+    rumble.start(t0);
+    rumble.stop(t0 + 1.6);
+
+    // Rising wind noise
+    const wLen = Math.floor(ctx.sampleRate * 1.5);
+    const wBuf = ctx.createBuffer(1, wLen, ctx.sampleRate);
+    const wd = wBuf.getChannelData(0);
+    for (let i = 0; i < wLen; i++) wd[i] = Math.random() * 2 - 1;
+    const windSrc = ctx.createBufferSource();
+    windSrc.buffer = wBuf;
+    const wbp = ctx.createBiquadFilter();
+    wbp.type = "bandpass";
+    wbp.frequency.setValueAtTime(300, t0);
+    wbp.frequency.exponentialRampToValueAtTime(1200, t0 + 1.2);
+    wbp.Q.value = 0.8;
+    const wg = ctx.createGain();
+    wg.gain.setValueAtTime(0.0001, t0);
+    wg.gain.exponentialRampToValueAtTime(0.12, t0 + 0.6);
+    wg.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.5);
+    windSrc.connect(wbp);
+    wbp.connect(wg);
+    wg.connect(bus);
+    windSrc.start(t0);
+    windSrc.stop(t0 + 1.6);
+  }
+
+  /** Dust storm hit — heavy impact */
+  dustStormHit(): void {
+    this.beep(60, 30, 0.35, 0.18, "sawtooth");
+    this.beep(90, 45, 0.25, 0.12, "square");
+  }
+
   extractionActivated(): void {
     this.beep(196, 392, 0.22, 0.11);
   }

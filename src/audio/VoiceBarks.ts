@@ -24,6 +24,7 @@ const BARKS: Record<string, BarkDef> = {
   extractionArmed:   { text: "Extraction armed \u2014 hold position",           priority: false },
   droneScan:         { text: "Drone detected \u2014 stay low",                  priority: false },
   fuelLow:           { text: "Fuel reserves low",                         priority: true  },
+  dustStormWarning:  { text: "Dust storm incoming \u2014 find cover NOW",        priority: true  },
   missionSuccess:    { text: "Good work, pilot \u2014 extraction complete",     priority: false },
   missionFailed:     { text: "Signal lost",                               priority: true  },
 };
