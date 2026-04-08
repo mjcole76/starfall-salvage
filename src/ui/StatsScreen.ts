@@ -225,7 +225,7 @@ export class StatsScreen {
 
     // --- prompts ---
     const prompts = document.createElement("div");
-    prompts.textContent = "R - Retry  |  N - Next  |  P - Procedural  |  U - Upgrades  |  L - Scores";
+    prompts.textContent = "R - Retry  |  N - Next  |  P - Procedural  |  D - Daily  |  X - Mutators  |  U - Upgrades  |  L - Scores";
     Object.assign(prompts.style, {
       textAlign: "center",
       fontSize: "0.78rem",

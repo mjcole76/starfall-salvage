@@ -231,7 +231,7 @@ export class MissionHud {
       return;
     }
     this.overlay.classList.remove("mission-hud__overlay--hidden");
-    const hint = "R — retry  ·  N — next  ·  P — procedural  ·  U — upgrades  ·  L — scores";
+    const hint = "R — retry  ·  N — next  ·  P — procedural  ·  D — daily  ·  X — mutators  ·  U — upgrades  ·  L — scores";
     if (outcome === "success") {
       this.overlayTitle.textContent = "Extraction complete";
       const obj = opts?.objectiveScore ?? 0;

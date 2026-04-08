@@ -15,6 +15,8 @@ export class GameSfx {
   private radThrottle = 0;
   private thermalWarnThrottle = 0;
   private droneScanThrottle = 0;
+  private footstepThrottle = 0;
+  private landThrottle = 0;
 
   constructor(getCtx: () => AudioContext | null) {
     this.getCtx = getCtx;
@@ -278,6 +280,134 @@ export class GameSfx {
   dustStormHit(): void {
     this.beep(60, 30, 0.35, 0.18, "sawtooth");
     this.beep(90, 45, 0.25, 0.12, "square");
+  }
+
+  /** Footstep — short filtered thud while grounded and moving (throttled). */
+  footstep(dt: number, moving: boolean): void {
+    if (!moving) return;
+    this.footstepThrottle += dt;
+    if (this.footstepThrottle < 0.28) return;
+    this.footstepThrottle = 0;
+    const ctx = this.getCtx();
+    const bus = this.bus();
+    if (!ctx || !bus) return;
+    const t0 = now(ctx);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(65 + Math.random() * 20, t0);
+    osc.frequency.exponentialRampToValueAtTime(35, t0 + 0.04);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.04, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+    osc.connect(g);
+    g.connect(bus);
+    osc.start(t0);
+    osc.stop(t0 + 0.08);
+    // Add a noise click for texture
+    const nLen = Math.floor(ctx.sampleRate * 0.03);
+    const nb = ctx.createBuffer(1, nLen, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / nLen);
+    const ns = ctx.createBufferSource();
+    ns.buffer = nb;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.025;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 800;
+    ns.connect(hp);
+    hp.connect(ng);
+    ng.connect(bus);
+    ns.start(t0);
+    ns.stop(t0 + 0.04);
+  }
+
+  /** Landing impact — heavier thud when returning to ground. */
+  landingImpact(): void {
+    const ctx = this.getCtx();
+    const bus = this.bus();
+    if (!ctx || !bus) return;
+    const t = now(ctx);
+    if (t - this.landThrottle < 0.3) return;
+    this.landThrottle = t;
+    // Low thud
+    this.beep(80, 30, 0.12, 0.1, "sine");
+    // Crunch noise
+    const nLen = Math.floor(ctx.sampleRate * 0.06);
+    const nb = ctx.createBuffer(1, nLen, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / nLen) * 0.8;
+    const ns = ctx.createBufferSource();
+    ns.buffer = nb;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.05;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 600;
+    ns.connect(lp);
+    lp.connect(ng);
+    ng.connect(bus);
+    ns.start(t);
+    ns.stop(t + 0.08);
+  }
+
+  /** Shield pickup — ascending shimmer */
+  shieldPickup(): void {
+    this.beep(440, 880, 0.12, 0.1);
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    window.setTimeout(() => this.beep(880, 1320, 0.1, 0.07), 60);
+  }
+
+  /** Shield absorb — bass thud + high chime */
+  shieldAbsorb(): void {
+    this.beep(120, 60, 0.2, 0.14, "sine");
+    this.beep(1200, 800, 0.15, 0.08);
+  }
+
+  /** Scanner pulse — sonar ping */
+  scannerPulse(): void {
+    this.beep(1400, 800, 0.3, 0.08);
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    window.setTimeout(() => this.beep(800, 600, 0.25, 0.05), 150);
+  }
+
+  /** Decoy beacon deploy */
+  decoyDeploy(): void {
+    this.beep(300, 600, 0.15, 0.09, "square");
+    const ctx = this.getCtx();
+    if (!ctx) return;
+    window.setTimeout(() => this.beep(600, 400, 0.1, 0.06, "square"), 100);
+  }
+
+  /** Lightning thunder — low rumble (called during storms) */
+  thunder(): void {
+    const ctx = this.getCtx();
+    const bus = this.bus();
+    if (!ctx || !bus) return;
+    const t0 = now(ctx);
+    // Deep rumble noise
+    const nLen = Math.floor(ctx.sampleRate * 1.2);
+    const nb = ctx.createBuffer(1, nLen, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nLen; i++) nd[i] = Math.random() * 2 - 1;
+    const ns = ctx.createBufferSource();
+    ns.buffer = nb;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(200, t0);
+    lp.frequency.exponentialRampToValueAtTime(60, t0 + 0.8);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.09, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.2);
+    ns.connect(lp);
+    lp.connect(g);
+    g.connect(bus);
+    ns.start(t0);
+    ns.stop(t0 + 1.3);
   }
 
   extractionActivated(): void {

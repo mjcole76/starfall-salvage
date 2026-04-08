@@ -17,7 +17,8 @@ export type MinimapMarker = {
     | 'drone'
     | 'fuel'
     | 'repair'
-    | 'shelter';
+    | 'shelter'
+    | 'shield';
   radius?: number; // world-units, used for zone markers
 };
 
@@ -308,6 +309,10 @@ export class Minimap {
         case 'repair':
           color = 'rgba(50, 220, 80, 0.9)';
           radius = 2;
+          break;
+        case 'shield':
+          color = 'rgba(80, 140, 255, 0.9)';
+          radius = 2.5;
           break;
         default:
           color = 'rgba(180,180,180,0.5)';

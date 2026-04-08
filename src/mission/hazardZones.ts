@@ -259,6 +259,28 @@ export type HazardSample = {
   thermalVentWarning: boolean;
 };
 
+/**
+ * Drift hazard zones slowly over time for dynamic positioning.
+ * Radiation zones orbit in a small circle; thermal vents stay put.
+ */
+export function driftHazardZones(
+  zones: HazardZone[],
+  elapsed: number,
+): void {
+  for (const z of zones) {
+    if (z.kind !== "radiation") continue;
+    // Slow orbit: 0.3 units/sec radius drift
+    const baseX = z.center.x;
+    const baseZ = z.center.z;
+    const driftR = 3;
+    const speed = 0.15;
+    const ox = Math.sin(elapsed * speed + baseX * 0.1) * driftR;
+    const oz = Math.cos(elapsed * speed + baseZ * 0.1) * driftR;
+    z.group.position.x = baseX + ox;
+    z.group.position.z = baseZ + oz;
+  }
+}
+
 export function sampleHazardEffects(
   playerPos: THREE.Vector3,
   zones: readonly HazardZone[],
@@ -278,8 +300,11 @@ export function sampleHazardEffects(
     Math.floor(e / period) > Math.floor(prevE / period);
 
   for (const z of zones) {
-    const dx = playerPos.x - z.center.x;
-    const dz = playerPos.z - z.center.z;
+    // Use group position (accounts for drift) instead of fixed center
+    const cx = z.group.position.x;
+    const cz = z.group.position.z;
+    const dx = playerPos.x - cx;
+    const dz = playerPos.z - cz;
     if (dx * dx + dz * dz > z.radius * z.radius) continue;
     const lo = z.center.y - 5;
     const hi = z.center.y + 80;

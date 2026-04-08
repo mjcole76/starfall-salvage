@@ -32,6 +32,7 @@ import {
 import {
   createHazardZones,
   disposeHazardZones,
+  driftHazardZones,
   sampleHazardEffects,
   type HazardZone,
 } from "../mission/hazardZones";
@@ -94,6 +95,28 @@ import {
   isInShelter,
   type Shelter,
 } from "../mission/shelters";
+import {
+  createShieldPickups,
+  tickShieldIdle,
+  tryCollectShield,
+  disposeShieldPickups,
+  type ShieldPickupItem,
+} from "../player/ShieldPickup";
+import { ScannerPulse } from "../player/ScannerPulse";
+import { DecoyBeacon } from "../player/DecoyBeacon";
+import { ShelterIndicator } from "../ui/ShelterIndicator";
+import { DataLogs } from "../ui/DataLogs";
+import { LightningFlash, HeatShimmer, TumbleweedSystem } from "../effects/WeatherEffects";
+import { DeathReplay } from "../effects/DeathReplay";
+import { MutatorPanel } from "../ui/MutatorPanel";
+import {
+  loadMutators,
+  getMutatorScoreMultiplier,
+  isMutatorActive,
+  type ActiveMutators,
+} from "../mission/mutators";
+import { getDailySeed, getDailyLabel } from "../mission/dailyChallenge";
+import { GamepadInput } from "../player/GamepadInput";
 
 const ENDGAME_MUSIC_LAST_SEC = 30;
 const STORM_WARN_REMAINING_SEC = 60;
@@ -175,6 +198,21 @@ export class Game {
   private dustStormState!: DustStormState;
   private dustStormVisual!: DustStormVisual;
   private shelters: Shelter[] = [];
+  private shieldPickups: ShieldPickupItem[] = [];
+  private hasShield = false;
+  private scannerPulse!: ScannerPulse;
+  private decoyBeacon!: DecoyBeacon;
+  private shelterIndicator!: ShelterIndicator;
+  private dataLogs!: DataLogs;
+  private lightning!: LightningFlash;
+  private heatShimmer!: HeatShimmer;
+  private tumbleweeds!: TumbleweedSystem;
+  private deathReplay!: DeathReplay;
+  private mutatorPanel!: MutatorPanel;
+  private activeMutators: ActiveMutators = new Set();
+  private gamepadInput!: GamepadInput;
+  private wasGrounded = true;
+  private prevMoving = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -270,6 +308,19 @@ export class Game {
     this.damageVignette = new DamageVignette(this.container);
     this.dustStormState = createDustStormState();
     this.dustStormVisual = new DustStormVisual(this.scene);
+    this.scannerPulse = new ScannerPulse(this.scene);
+    this.decoyBeacon = new DecoyBeacon(this.scene);
+    this.shelterIndicator = new ShelterIndicator(this.container);
+    this.dataLogs = new DataLogs(this.container);
+    this.lightning = new LightningFlash(this.container);
+    this.heatShimmer = new HeatShimmer(this.container);
+    this.tumbleweeds = new TumbleweedSystem(this.scene, this.terrain);
+    this.deathReplay = new DeathReplay();
+    this.mutatorPanel = new MutatorPanel(this.container, () => {
+      this.activeMutators = this.mutatorPanel.getActive();
+    });
+    this.activeMutators = loadMutators();
+    this.gamepadInput = new GamepadInput(this.container);
 
     // Load saved currency
     const saved = UpgradeShop.loadState();
@@ -300,10 +351,16 @@ export class Game {
 
     const tick = () => {
       requestAnimationFrame(tick);
-      const dt = Math.min(this.clock.getDelta(), 0.05);
+      let dt = Math.min(this.clock.getDelta(), 0.05);
+
+      // Death replay time scaling
+      dt = this.deathReplay.update(dt);
 
       // Update voice barks text animation always
       this.barks.update(dt);
+
+      // Poll gamepad / touch input
+      const gpKeys = this.gamepadInput.poll();
 
       if (!this.gameStarted) {
         // Still render scene behind title screen
@@ -316,17 +373,30 @@ export class Game {
       const locked = this.outcome !== "playing";
       const jetJammed = this.missionElapsed < this.jetJamUntilElapsed;
 
+      // Merge gamepad keys into player keys
+      const playerKeys = this.player.getKeys();
+      for (const k of gpKeys) playerKeys.add(k);
+
       // Dash integration
       const dashVel = this.dash.update(
         dt,
         this.player.getWishDir(),
         this.player.getFacing(),
-        this.player.getKeys()
+        playerKeys
       );
 
       const sig = this.player.update(dt, this.terrain, locked, jetJammed, dashVel);
       this.sfx.jetThrust(sig.jetThrusting, dt);
       if (sig.lowFuelWarn) this.sfx.lowFuelWarning();
+
+      // Footstep and landing sounds
+      const isGrounded = this.player.isGrounded();
+      const vel = this.player.getVelocity();
+      const hSpeed = Math.hypot(vel.x, vel.z);
+      const isMoving = hSpeed > 1.5 && isGrounded;
+      if (isGrounded && !this.wasGrounded) this.sfx.landingImpact();
+      if (isMoving) this.sfx.footstep(dt, true);
+      this.wasGrounded = isGrounded;
 
       // Fuel low bark
       if (this.player.getFuelRatio() <= 0.22 && !this.fuelLowBarkFired) {
@@ -373,10 +443,34 @@ export class Game {
           this.particles.burstRepair(this.player.root.position);
         }
 
+        // Shield pickup
+        if (tryCollectShield(this.shieldPickups, this.player.root.position)) {
+          this.hasShield = true;
+          this.sfx.shieldPickup();
+          this.particles.burstCore(this.player.root.position);
+        }
+
+        // Scanner pulse (E key)
+        if (playerKeys.has("KeyE")) {
+          if (this.scannerPulse.activate(this.player.root.position)) {
+            this.sfx.scannerPulse();
+          }
+        }
+        this.scannerPulse.update(dt);
+
+        // Decoy beacon (F key)
+        if (playerKeys.has("KeyF")) {
+          if (this.decoyBeacon.deploy(this.player.root.position, this.terrain)) {
+            this.sfx.decoyDeploy();
+          }
+        }
+        this.decoyBeacon.update(dt, this.missionElapsed);
+
         tickEnergyCoreIdle(this.cores, this.missionElapsed);
         tickSalvageIdle(this.salvage, this.missionElapsed);
         tickFuelIdle(this.fuelCans, this.missionElapsed);
         tickRepairIdle(this.repairKits, this.missionElapsed);
+        tickShieldIdle(this.shieldPickups, this.missionElapsed);
 
         const n = collectedCoreCount(this.cores);
         const req = this.variant.requiredCoreCount;
@@ -418,6 +512,7 @@ export class Game {
         }
         if (droneTick.inDroneScan) this.sfx.droneScanPing(dt);
 
+        driftHazardZones(this.hazards, this.missionElapsed);
         const hz = sampleHazardEffects(
           this.player.root.position,
           this.hazards,
@@ -464,8 +559,15 @@ export class Game {
           this.postfx.shake(0.1, 0.3);
         }
         if (dustTick.playerInStorm) {
-          this.sfx.dustStormHit();
-          this.postfx.shake(0.35, 0.2);
+          if (this.hasShield && dustTick.integrityLoss > 0) {
+            this.hasShield = false;
+            dustTick.integrityLoss = 0;
+            this.sfx.shieldAbsorb();
+            this.postfx.shake(0.2, 0.3);
+          } else {
+            this.sfx.dustStormHit();
+            this.postfx.shake(0.35, 0.2);
+          }
         }
         this.dustStormVisual.update(this.dustStormState, dt, this.missionElapsed);
 
@@ -606,6 +708,52 @@ export class Game {
       this.damageVignette.setIntegrity(this.integrity);
       this.damageVignette.update(dt);
 
+      // Weather effects
+      const isEndgameUrgent = (this.stormTimeLimit - this.missionElapsed) <= ENDGAME_MUSIC_LAST_SEC;
+      this.lightning.update(dt, isEndgameUrgent);
+
+      // Heat shimmer near thermal vents
+      let nearHeat = 0;
+      for (const hz of this.hazards) {
+        if (hz.kind !== "heat") continue;
+        const dx = this.player.root.position.x - hz.center.x;
+        const dz = this.player.root.position.z - hz.center.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < hz.radius * 2) {
+          nearHeat = Math.max(nearHeat, 1 - dist / (hz.radius * 2));
+        }
+      }
+      this.heatShimmer.setIntensity(nearHeat);
+      this.heatShimmer.update(dt, this.missionElapsed);
+
+      // Tumbleweeds
+      this.tumbleweeds.update(dt);
+
+      // Shelter indicator
+      this.shelterIndicator.update(
+        this.player.root.position.x,
+        this.player.root.position.z,
+        this.player.getFacing(),
+        this.shelters,
+        this.dustStormState.phase
+      );
+
+      // Data logs
+      this.dataLogs.update(dt, this.player.root.position.x, this.player.root.position.z);
+
+      // Minimap visibility (no_minimap mutator)
+      if (isMutatorActive(this.activeMutators, "no_minimap")) {
+        // Minimap hidden unless scanner pulse is revealing
+        // (handled via CSS — we just skip the update to save perf)
+      }
+
+      // Death replay zoom
+      if (this.deathReplay.active) {
+        this.cameraRig.setZoomFactor(this.deathReplay.zoomFactor);
+      } else {
+        this.cameraRig.setZoomFactor(1);
+      }
+
       // Dash afterimage
       if (this.dash.isDashing) {
         if (!this.wasDashing) {
@@ -737,6 +885,13 @@ export class Game {
       });
     }
 
+    // Shield pickups
+    for (const sp of this.shieldPickups) {
+      if (!sp.collected) {
+        markers.push({ x: sp.center.x, z: sp.center.z, type: "shield" });
+      }
+    }
+
     // Shelters
     for (const s of this.shelters) {
       markers.push({
@@ -778,6 +933,7 @@ export class Game {
     this.prevStormLeft = this.stormTimeLimit;
     this.hazards = createHazardZones(this.terrain, this.scene, this.variant.hazardLayout);
     this.shelters = createShelters(this.terrain, this.scene);
+    this.shieldPickups = createShieldPickups(this.terrain, this.scene);
     this.cores = createEnergyCores(this.terrain, this.scene, this.variant.cores);
     this.salvage = createSalvagePickups(this.terrain, this.scene, this.variant.salvage);
     this.fuelCans = createFuelPickups(this.terrain, this.scene, this.variant.fuelPickups);
@@ -824,6 +980,8 @@ export class Game {
     this.hazards = [];
     disposeShelters(this.shelters);
     this.shelters = [];
+    disposeShieldPickups(this.shieldPickups);
+    this.shieldPickups = [];
     for (const c of this.cores) c.group.removeFromParent();
     this.cores = [];
     for (const s of this.salvage) s.group.removeFromParent();
@@ -916,8 +1074,9 @@ export class Game {
         bonusTimeScore: timeBonus,
       };
 
-      // Add salvage to currency
-      const totalScore = stats.objectiveScore + stats.salvageScore + stats.bonusTimeScore;
+      // Add salvage to currency (with mutator multiplier)
+      const mutMult = getMutatorScoreMultiplier(this.activeMutators);
+      const totalScore = Math.round((stats.objectiveScore + stats.salvageScore + stats.bonusTimeScore) * mutMult);
       this.totalCurrency += totalScore;
       UpgradeShop.saveState(this.totalCurrency, UpgradeShop.loadState().upgrades);
 
@@ -977,10 +1136,11 @@ export class Game {
       bonusTimeScore: 0,
     };
 
-    setTimeout(() => {
+    // Trigger death replay slow-mo, then show stats
+    this.deathReplay.trigger(() => {
       this.statsScreen.show(stats);
       this.hud.setOutcome("playing");
-    }, 800);
+    });
   }
 
   private bindRestart(): void {
@@ -1007,8 +1167,8 @@ export class Game {
         return;
       }
 
-      // Handle shop/leaderboard closures
-      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible()) return;
+      // Handle shop/leaderboard/mutator closures
+      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible() || this.mutatorPanel.isVisible()) return;
       if (this.settingsMenu.isVisible() || this.keyboardHelp.isVisible()) return;
 
       if (this.outcome === "playing") return;
@@ -1033,6 +1193,16 @@ export class Game {
       if (e.code === "KeyL") {
         this.statsScreen.hide();
         this.leaderboard.show(`${this.variant.id} · ${this.variant.title}`);
+        return;
+      }
+      if (e.code === "KeyX") {
+        this.statsScreen.hide();
+        this.mutatorPanel.show();
+        return;
+      }
+      if (e.code === "KeyD") {
+        // Daily challenge
+        this.beginDailyChallenge();
         return;
       }
     });
@@ -1097,6 +1267,80 @@ export class Game {
     this.sandstorm.setIntensity(0);
     this.wasDashing = false;
     this.dustStormState = createDustStormState();
+    this.hasShield = false;
+    this.scannerPulse.reset();
+    this.decoyBeacon.reset();
+    this.deathReplay.reset();
+    this.dataLogs.reset();
+    this.wasGrounded = true;
+
+    await this.transition.fadeIn(0.4);
+    this.barks.play("missionStart");
+  }
+
+  private async beginDailyChallenge(): Promise<void> {
+    this.statsScreen.hide();
+    await this.transition.fadeOut(0.3);
+    this.useProceduralMissions = true;
+    this.outcome = "playing";
+    this.missionElapsed = 0;
+    this.extractionHold = 0;
+    this.extractionArmProgress = 0;
+    this.extractionPulseAcc = 0;
+    this.jetJamUntilElapsed = 0;
+    this.salvageScore = 0;
+    this.objectiveScore = 0;
+    this.prevCoreCount = 0;
+    this.integrityLowBarkFired = false;
+    this.fuelLowBarkFired = false;
+    this.teardownPickups();
+
+    // Generate with daily seed
+    const seed = getDailySeed();
+    this.variant = generateProceduralMission(3, seed);
+
+    this.hazardTuning = mergeHazardTuning(this.variant.hazardTuning);
+    this.stormTimeLimit = this.variant.stormTimeLimitSec;
+    this.prevStormLeft = this.stormTimeLimit;
+    this.hazards = createHazardZones(this.terrain, this.scene, this.variant.hazardLayout);
+    this.shelters = createShelters(this.terrain, this.scene);
+    this.shieldPickups = createShieldPickups(this.terrain, this.scene);
+    this.cores = createEnergyCores(this.terrain, this.scene, this.variant.cores);
+    this.salvage = createSalvagePickups(this.terrain, this.scene, this.variant.salvage);
+    this.fuelCans = createFuelPickups(this.terrain, this.scene, this.variant.fuelPickups);
+    this.repairKits = createRepairPickups(this.terrain, this.scene, this.variant.repairPickups);
+    this.extraction = new ExtractionZone(
+      this.terrain, this.variant.extraction[0], this.variant.extraction[1], 6, this.scene
+    );
+    this.extraction.setActive(false);
+    this.drones = new PatrolDroneSystem(this.terrain, this.scene);
+    this.drones.setParams(this.variant.droneCount, this.variant.droneSpeed, this.hazardTuning);
+
+    const label = getDailyLabel();
+    this.hud?.setVariantTitle(`Daily · ${label}`);
+
+    const ups = this.getUpgradeMultipliers();
+    this.maxIntegrity = BASE_MAX_INTEGRITY + ups.armor;
+    this.integrity = this.maxIntegrity;
+    this.hud.setOutcome("playing");
+    this.applyPlayerFromVariant();
+    this.extraction.setActive(false);
+    this.ambience.resetLayers();
+
+    this.postfx.setDamageIntensity(0);
+    this.combo.reset();
+    this.speedRunTimer.setVariant(`Daily · ${label}`);
+    this.speedRunTimer.show();
+    this.damageVignette.setIntegrity(this.maxIntegrity);
+    this.sandstorm.setIntensity(0);
+    this.wasDashing = false;
+    this.dustStormState = createDustStormState();
+    this.hasShield = false;
+    this.scannerPulse.reset();
+    this.decoyBeacon.reset();
+    this.deathReplay.reset();
+    this.dataLogs.reset();
+    this.wasGrounded = true;
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");
