@@ -38,13 +38,7 @@ export class MutatorPanel {
     });
     container.appendChild(this.root);
 
-    window.addEventListener("keydown", (e) => {
-      if (!this.visible) return;
-      if (e.code === "Escape" || e.code === "KeyX") {
-        this.hide();
-        e.stopPropagation();
-      }
-    });
+    // Key handling done by Game.ts to avoid double-listener conflicts
   }
 
   show(): void {

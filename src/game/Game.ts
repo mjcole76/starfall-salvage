@@ -327,6 +327,10 @@ export class Game {
     this.deathReplay = new DeathReplay();
     this.mutatorPanel = new MutatorPanel(this.container, () => {
       this.activeMutators = this.mutatorPanel.getActive();
+      // Return to stats screen if game is over
+      if (this.outcome !== "playing") {
+        // Stats screen will re-show on next key press (R/N/P/etc)
+      }
     });
     this.activeMutators = loadMutators();
     this.gamepadInput = new GamepadInput(this.container);
@@ -1239,9 +1243,25 @@ export class Game {
         return;
       }
       if (e.code === "Escape" && !this.keyboardHelp.isVisible()) {
+        // Close any open overlay first, in priority order
+        if (this.mutatorPanel.isVisible()) {
+          this.mutatorPanel.hide();
+          return;
+        }
+        if (this.onlineLeaderboard.isVisible()) {
+          this.onlineLeaderboard.hide();
+          return;
+        }
+        if (this.upgradeShop.isVisible()) {
+          // UpgradeShop handles its own close
+          return;
+        }
+        if (this.leaderboard.isVisible()) {
+          return;
+        }
         if (this.settingsMenu.isVisible()) {
           this.settingsMenu.hide();
-        } else if (!this.upgradeShop.isVisible() && !this.leaderboard.isVisible()) {
+        } else if (this.outcome === "playing") {
           this.settingsMenu.show();
         }
         return;
@@ -1276,8 +1296,12 @@ export class Game {
         return;
       }
       if (e.code === "KeyX") {
-        this.statsScreen.hide();
-        this.mutatorPanel.show();
+        if (this.mutatorPanel.isVisible()) {
+          this.mutatorPanel.hide();
+        } else {
+          this.statsScreen.hide();
+          this.mutatorPanel.show();
+        }
         return;
       }
       if (e.code === "KeyD") {
