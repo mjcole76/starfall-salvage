@@ -139,6 +139,21 @@ export class ObjectiveGuide {
       this.hintEl.textContent = PHASE_HINT[this.phase];
     }
 
+    // Color-code by phase
+    const PHASE_COLOR: Record<GuidePhase, string> = {
+      find_core: "#00f0ff",
+      more_cores: "#00f0ff",
+      go_extract: "#4ad8a0",
+      hold_extract: "#ffaa33",
+      done: "#4ad8a0",
+    };
+    const color = PHASE_COLOR[this.phase];
+    this.arrowEl.style.color = color;
+    this.arrowEl.style.textShadow = `0 0 10px ${color}88`;
+    this.textEl.style.color = color;
+    this.textEl.style.textShadow = `0 0 8px ${color}44`;
+    this.el.style.borderColor = `${color}40`;
+
     // Point arrow toward target
     const dx = targetX - playerX;
     const dz = targetZ - playerZ;
