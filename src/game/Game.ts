@@ -119,6 +119,8 @@ import { getDailySeed, getDailyLabel } from "../mission/dailyChallenge";
 import { GamepadInput } from "../player/GamepadInput";
 import { ObjectiveGuide } from "../ui/ObjectiveGuide";
 import { FloatingText } from "../ui/FloatingText";
+import { OnlineLeaderboard } from "../ui/OnlineLeaderboard";
+import { NamePrompt } from "../ui/NamePrompt";
 
 const ENDGAME_MUSIC_LAST_SEC = 30;
 const STORM_WARN_REMAINING_SEC = 60;
@@ -218,6 +220,8 @@ export class Game {
   private objectiveGuide!: ObjectiveGuide;
   private floatingText!: FloatingText;
   private lastDeathCause: DeathCause = "unknown";
+  private onlineLeaderboard!: OnlineLeaderboard;
+  private namePrompt!: NamePrompt;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -328,6 +332,8 @@ export class Game {
     this.gamepadInput = new GamepadInput(this.container);
     this.objectiveGuide = new ObjectiveGuide(this.container);
     this.floatingText = new FloatingText(this.container);
+    this.onlineLeaderboard = new OnlineLeaderboard(this.container);
+    this.namePrompt = new NamePrompt(this.container);
 
     // Load saved currency
     const saved = UpgradeShop.loadState();
@@ -838,16 +844,21 @@ export class Game {
     requestAnimationFrame(tick);
   }
 
-  private onTitleDismiss(): void {
+  private async onTitleDismiss(): Promise<void> {
+    // Start music on user gesture (before any async waits)
+    const ctx = this.ambience.getAudioContext();
+    if (ctx) this.music.start(ctx);
+
+    // Ask for pilot name if not set yet
+    if (!NamePrompt.hasName()) {
+      await this.namePrompt.prompt();
+    }
+
     this.gameStarted = true;
     this.transition.fadeIn(0.6);
     this.tutorial.show();
     this.barks.play("missionStart");
     this.speedRunTimer.show();
-
-    // Start music on user gesture
-    const ctx = this.ambience.getAudioContext();
-    if (ctx) this.music.start(ctx);
   }
 
   private applySettings(s: GameSettings): void {
@@ -1153,6 +1164,11 @@ export class Game {
         date: new Date().toISOString().slice(0, 10),
       });
 
+      // Submit to online leaderboard
+      const variantStr = `${this.variant.id} · ${this.variant.title}`;
+      const isDaily = variantStr.startsWith("Daily");
+      OnlineLeaderboard.submitScore(totalScore, grade, this.missionElapsed, variantStr, isDaily);
+
       // Record speed run
       const isNewPb = this.speedRunTimer.recordCompletion(this.missionElapsed);
 
@@ -1232,7 +1248,7 @@ export class Game {
       }
 
       // Handle shop/leaderboard/mutator closures
-      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible() || this.mutatorPanel.isVisible()) return;
+      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible() || this.mutatorPanel.isVisible() || this.onlineLeaderboard.isVisible()) return;
       if (this.settingsMenu.isVisible() || this.keyboardHelp.isVisible()) return;
 
       if (this.outcome === "playing") return;
@@ -1256,7 +1272,7 @@ export class Game {
       }
       if (e.code === "KeyL") {
         this.statsScreen.hide();
-        this.leaderboard.show(`${this.variant.id} · ${this.variant.title}`);
+        this.onlineLeaderboard.show();
         return;
       }
       if (e.code === "KeyX") {
