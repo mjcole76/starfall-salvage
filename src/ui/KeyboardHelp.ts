@@ -56,16 +56,8 @@ export class KeyboardHelp {
 
     container.appendChild(this.root);
 
-    this.onKey = (e: KeyboardEvent) => {
-      if (!this.visible) return;
-      if (e.key === "h" || e.key === "H" || e.key === "Escape") {
-        this.hide();
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-
-    window.addEventListener("keydown", this.onKey);
+    this.onKey = () => {};
+    // Key handling is done by Game.ts bindRestart to avoid double-toggle
   }
 
   /* ---- public ---- */
