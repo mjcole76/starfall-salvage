@@ -64,7 +64,7 @@ import { DashAbility } from "../player/DashAbility";
 import { MissionHud } from "../ui/MissionHud";
 import { TitleScreen } from "../ui/TitleScreen";
 import { TutorialOverlay } from "../ui/TutorialOverlay";
-import { StatsScreen, type MissionStats } from "../ui/StatsScreen";
+import { StatsScreen, type MissionStats, type DeathCause } from "../ui/StatsScreen";
 import { ScreenTransition } from "../ui/ScreenTransition";
 import { Minimap, type MinimapMarker } from "../ui/Minimap";
 import { Leaderboard } from "../ui/Leaderboard";
@@ -117,6 +117,8 @@ import {
 } from "../mission/mutators";
 import { getDailySeed, getDailyLabel } from "../mission/dailyChallenge";
 import { GamepadInput } from "../player/GamepadInput";
+import { ObjectiveGuide } from "../ui/ObjectiveGuide";
+import { FloatingText } from "../ui/FloatingText";
 
 const ENDGAME_MUSIC_LAST_SEC = 30;
 const STORM_WARN_REMAINING_SEC = 60;
@@ -213,6 +215,9 @@ export class Game {
   private gamepadInput!: GamepadInput;
   private wasGrounded = true;
   private prevMoving = false;
+  private objectiveGuide!: ObjectiveGuide;
+  private floatingText!: FloatingText;
+  private lastDeathCause: DeathCause = "unknown";
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -321,6 +326,8 @@ export class Game {
     });
     this.activeMutators = loadMutators();
     this.gamepadInput = new GamepadInput(this.container);
+    this.objectiveGuide = new ObjectiveGuide(this.container);
+    this.floatingText = new FloatingText(this.container);
 
     // Load saved currency
     const saved = UpgradeShop.loadState();
@@ -411,20 +418,24 @@ export class Game {
         const corePick = tryCollectEnergyCores(this.cores, this.player.root.position);
         if (corePick.picked > 0) {
           const mult = this.combo.pickup();
-          this.objectiveScore += corePick.scoreGain * mult;
+          const pts = corePick.scoreGain * mult;
+          this.objectiveScore += pts;
           this.sfx.corePickup();
           this.particles.burstCore(this.player.root.position);
           this.postfx.shake(0.12, 0.2);
           this.barks.play("coreSecured");
+          this.floatingText.spawnCenter(`CORE +${Math.round(pts)}`, "#00f0ff");
         }
 
         const salvageGain = tryCollectSalvage(this.salvage, this.player.root.position);
         if (salvageGain > 0) {
           const mult = this.combo.pickup();
-          this.salvageScore += salvageGain * mult;
+          const pts = salvageGain * mult;
+          this.salvageScore += pts;
           this.sfx.salvagePickup();
           this.particles.burstSalvage(this.player.root.position);
           this.postfx.shake(0.06, 0.12);
+          this.floatingText.spawnCenter(`+${Math.round(pts)}`, "#e8b828");
         }
 
         const fuelAdd = tryCollectFuel(this.fuelCans, this.player.root.position);
@@ -433,6 +444,7 @@ export class Game {
           this.player.addFuel(fuelAdd);
           this.sfx.fuelCanPickup();
           this.particles.burstFuel(this.player.root.position);
+          this.floatingText.spawnCenter(`+FUEL`, "#3c8cff");
         }
 
         const repairAdd = tryCollectRepair(this.repairKits, this.player.root.position);
@@ -441,6 +453,7 @@ export class Game {
           this.integrity = Math.min(this.maxIntegrity, this.integrity + repairAdd);
           this.sfx.repairKitPickup();
           this.particles.burstRepair(this.player.root.position);
+          this.floatingText.spawnCenter(`+REPAIR`, "#32dc58");
         }
 
         // Shield pickup
@@ -448,6 +461,7 @@ export class Game {
           this.hasShield = true;
           this.sfx.shieldPickup();
           this.particles.burstCore(this.player.root.position);
+          this.floatingText.spawnCenter("+SHIELD", "#4488ff");
         }
 
         // Scanner pulse (E key)
@@ -577,6 +591,19 @@ export class Game {
           : hz.integrityLoss + wallDps * dt + droneTick.integrityLoss + dustTick.integrityLoss;
         this.integrity = Math.max(0, this.integrity - totalLoss);
 
+        // Track highest damage source for death cause
+        if (totalLoss > 0) {
+          const sources: [number, DeathCause][] = [
+            [dustTick.integrityLoss, "dust_storm"],
+            [wallDps * dt, "storm_wall"],
+            [hz.heatPulse ? hz.integrityLoss : 0, "thermal_vent"],
+            [hz.inRadiation ? hz.integrityLoss : 0, "radiation"],
+            [droneTick.integrityLoss, "patrol_drone"],
+          ];
+          sources.sort((a, b) => b[0] - a[0]);
+          if (sources[0][0] > 0) this.lastDeathCause = sources[0][1];
+        }
+
         // Damage screen effects
         if (totalLoss > 0.5) {
           this.postfx.shake(Math.min(0.15, totalLoss * 0.02), 0.15);
@@ -682,6 +709,9 @@ export class Game {
       // Combo HUD update
       this.combo.update(dt);
 
+      // Floating text
+      this.floatingText.update(dt);
+
       // Music tension
       const stormT = 1 - THREE.MathUtils.clamp(
         (this.stormTimeLimit - this.missionElapsed) / this.stormTimeLimit, 0, 1
@@ -740,6 +770,38 @@ export class Game {
 
       // Data logs
       this.dataLogs.update(dt, this.player.root.position.x, this.player.root.position.z);
+
+      // Objective guide
+      {
+        const cc = collectedCoreCount(this.cores);
+        const req = this.variant.requiredCoreCount;
+        const exOn = cc >= req;
+        const exArmed = this.extractionArmProgress >= 1;
+        const inEx = exOn && this.extraction.containsPlayer(this.player.root.position);
+        // Find nearest uncollected core as target, or extraction
+        let tx = this.extraction.center.x;
+        let tz = this.extraction.center.z;
+        if (!exOn) {
+          let bestDist = Infinity;
+          for (const c of this.cores) {
+            if (c.collected) continue;
+            const dx = this.player.root.position.x - c.center.x;
+            const dz = this.player.root.position.z - c.center.z;
+            const d = dx * dx + dz * dz;
+            if (d < bestDist) {
+              bestDist = d;
+              tx = c.center.x;
+              tz = c.center.z;
+            }
+          }
+        }
+        this.objectiveGuide.update(
+          this.player.root.position.x,
+          this.player.root.position.z,
+          this.player.getFacing(),
+          cc, req, exOn, exArmed, inEx, tx, tz
+        );
+      }
 
       // Minimap visibility (no_minimap mutator)
       if (isMutatorActive(this.activeMutators, "no_minimap")) {
@@ -1044,7 +1106,7 @@ export class Game {
     if (this.outcome !== "playing") return;
 
     if (this.integrity <= 0) {
-      this.failMission();
+      this.failMission(this.lastDeathCause);
       return;
     }
 
@@ -1055,6 +1117,7 @@ export class Game {
     ) {
       this.outcome = "success";
       this.barks.play("missionSuccess");
+      this.objectiveGuide.markComplete();
       this.ambience.duckMusic(0.25, 0.6);
       this.sfx.successSting();
       this.postfx.shake(0.2, 0.4);
@@ -1102,7 +1165,7 @@ export class Game {
     }
 
     if (this.missionElapsed >= this.stormTimeLimit) {
-      this.failMission();
+      this.failMission("time_expired");
     }
   }
 
@@ -1115,7 +1178,7 @@ export class Game {
     return "F";
   }
 
-  private failMission(): void {
+  private failMission(cause: DeathCause = "unknown"): void {
     if (this.outcome !== "playing") return;
     this.outcome = "failed";
     this.barks.play("missionFailed");
@@ -1134,6 +1197,7 @@ export class Game {
       objectiveScore: this.objectiveScore,
       salvageScore: this.salvageScore,
       bonusTimeScore: 0,
+      deathCause: cause,
     };
 
     // Trigger death replay slow-mo, then show stats
@@ -1273,6 +1337,8 @@ export class Game {
     this.deathReplay.reset();
     this.dataLogs.reset();
     this.wasGrounded = true;
+    this.objectiveGuide.reset();
+    this.lastDeathCause = "unknown";
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");
@@ -1341,6 +1407,8 @@ export class Game {
     this.deathReplay.reset();
     this.dataLogs.reset();
     this.wasGrounded = true;
+    this.objectiveGuide.reset();
+    this.lastDeathCause = "unknown";
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");

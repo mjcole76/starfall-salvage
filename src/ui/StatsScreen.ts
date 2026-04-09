@@ -2,6 +2,15 @@
  * End-of-mission stats screen with animated counters and letter grade.
  */
 
+export type DeathCause =
+  | "radiation"
+  | "thermal_vent"
+  | "storm_wall"
+  | "dust_storm"
+  | "patrol_drone"
+  | "time_expired"
+  | "unknown";
+
 export type MissionStats = {
   outcome: "success" | "failed";
   timeSec: number;
@@ -13,6 +22,7 @@ export type MissionStats = {
   objectiveScore: number;
   salvageScore: number;
   bonusTimeScore: number;
+  deathCause?: DeathCause;
 };
 
 /* ---- helpers ---- */
@@ -118,11 +128,35 @@ export class StatsScreen {
       fontWeight: "700",
       letterSpacing: "0.18em",
       textAlign: "center",
-      marginBottom: "1.4rem",
+      marginBottom: isSuccess ? "1.4rem" : "0.4rem",
       color: isSuccess ? "#4ad8a0" : "#a84830",
       textShadow: isSuccess ? "0 0 12px rgba(74,216,160,0.3)" : "0 0 12px rgba(168,72,48,0.25)",
     } as CSSStyleDeclaration);
     panel.appendChild(header);
+
+    // --- cause of death ---
+    if (!isSuccess && stats.deathCause && stats.deathCause !== "unknown") {
+      const causeLabels: Record<string, string> = {
+        radiation: "RADIATION EXPOSURE",
+        thermal_vent: "THERMAL VENT BURST",
+        storm_wall: "STORM WALL",
+        dust_storm: "DUST STORM",
+        patrol_drone: "PATROL DRONE",
+        time_expired: "TIME EXPIRED",
+      };
+      const causeEl = document.createElement("div");
+      causeEl.textContent = `KILLED BY: ${causeLabels[stats.deathCause] ?? stats.deathCause.toUpperCase()}`;
+      Object.assign(causeEl.style, {
+        fontSize: "0.8rem",
+        fontWeight: "600",
+        letterSpacing: "0.12em",
+        textAlign: "center",
+        marginBottom: "1.2rem",
+        color: "#c86040",
+        textShadow: "0 0 8px rgba(200,96,64,0.3)",
+      } as CSSStyleDeclaration);
+      panel.appendChild(causeEl);
+    }
 
     // --- stat rows ---
     const monoFont = 'ui-monospace, "Cascadia Mono", monospace';

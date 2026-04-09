@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0a0605"/>
+  <text x="600" y="260" text-anchor="middle" font-family="system-ui, sans-serif" font-size="72" font-weight="800" letter-spacing="8" fill="#e8e0d8">STARFALL SALVAGE</text>
+  <text x="600" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="28" font-weight="400" letter-spacing="6" fill="#9a9288" text-transform="uppercase">TACTICAL EXTRACTION RUNNER</text>
+  <text x="600" y="420" text-anchor="middle" font-family="system-ui, sans-serif" font-size="22" font-weight="400" fill="#b8a890" font-style="italic">Recover the cores. Survive the storm. Extract alive.</text>
+  <circle cx="600" cy="500" r="4" fill="#4ad8a0" opacity="0.8"/>
+  <circle cx="560" cy="510" r="3" fill="#4ad8a0" opacity="0.5"/>
+  <circle cx="640" cy="505" r="3" fill="#4ad8a0" opacity="0.6"/>
+</svg>
