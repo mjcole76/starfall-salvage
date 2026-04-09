@@ -173,8 +173,9 @@ export class TitleScreen {
 
     container.appendChild(this.root);
 
-    // --- click handler ---
+    // --- click / keypress handler ---
     this.root.addEventListener("click", this.handleClick);
+    window.addEventListener("keydown", this.handleClick, { once: true });
   }
 
   /* ---- public API ---- */
