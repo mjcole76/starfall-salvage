@@ -44,6 +44,9 @@ export class PlayerController {
   private maxFuel = 100;
   private facing = 0;
   private speedMult = 1;
+  private externalSpeedMult = 1;
+  /** Last horizontal move direction (unit vector, XZ). For external systems (ice slip, etc). */
+  readonly lastMoveDir = new THREE.Vector3();
 
   private keys = new Set<string>();
   private lowFuelLatch = false;
@@ -137,6 +140,11 @@ export class PlayerController {
     const out = new THREE.Vector3();
     this.readWishWorldXZ(out);
     return out;
+  }
+
+  /** External speed modifier (powerups, hazards). 1 = neutral. */
+  setExternalSpeedMult(m: number): void {
+    this.externalSpeedMult = Math.max(0.1, m);
   }
 
   addFuel(percent: number): void {
@@ -267,6 +275,12 @@ export class PlayerController {
     const space = this.keyDown("Space");
     const shift = this.keyDown("ShiftLeft", "ShiftRight");
     const hasWish = this.readWishWorldXZ(this._wish);
+    if (hasWish) {
+      this.lastMoveDir.set(this._wish.x, 0, this._wish.z);
+    } else {
+      this.lastMoveDir.set(0, 0, 0);
+    }
+    const effSpeedMult = this.speedMult * this.externalSpeedMult;
 
     if (this.onGround) {
       if (hasWish) {
@@ -274,7 +288,7 @@ export class PlayerController {
         this.velocity.z += this._wish.z * this.moveAccel * dt;
       }
       this.applyHorizontalFriction(dt);
-      this.clampHorizontalSpeed(this.maxGroundSpeed * this.speedMult);
+      this.clampHorizontalSpeed(this.maxGroundSpeed * effSpeedMult);
 
       if (space && jetOk) {
         jetThrusting = true;

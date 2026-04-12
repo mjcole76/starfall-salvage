@@ -8,6 +8,10 @@ export type DeathCause =
   | "storm_wall"
   | "dust_storm"
   | "patrol_drone"
+  | "unstable_core"
+  | "lightning"
+  | "sentry_turret"
+  | "burrower"
   | "time_expired"
   | "unknown";
 
@@ -142,6 +146,10 @@ export class StatsScreen {
         storm_wall: "STORM WALL",
         dust_storm: "DUST STORM",
         patrol_drone: "PATROL DRONE",
+        unstable_core: "UNSTABLE CORE DETONATION",
+        lightning: "LIGHTNING STRIKE",
+        sentry_turret: "SENTRY TURRET",
+        burrower: "BURROWER AMBUSH",
         time_expired: "TIME EXPIRED",
       };
       const causeEl = document.createElement("div");

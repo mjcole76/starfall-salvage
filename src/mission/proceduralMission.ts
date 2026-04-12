@@ -103,18 +103,33 @@ function generateCores(
   rng: SeededRandom,
   count: number,
   hasHighValue: boolean,
+  tier: number,
 ): CoreSpawn[] {
   const placed: { x: number; z: number }[] = [];
   const cores: CoreSpawn[] = [];
+
+  // Exotic core variants unlock at higher tiers
+  const exoticPool: CoreSpawn["variant"][] = [];
+  if (tier >= 2) exoticPool.push("phasing");
+  if (tier >= 3) exoticPool.push("magnetic");
+  if (tier >= 4) exoticPool.push("unstable");
 
   for (let i = 0; i < count; i++) {
     const pos = placeAway(rng, placed, MIN_CORE_DIST);
     placed.push(pos);
     const isHigh = hasHighValue && i === count - 1 && count >= 3;
+
+    let variant: CoreSpawn["variant"] = "standard";
+    if (isHigh) {
+      variant = "high_value";
+    } else if (exoticPool.length > 0 && i > 0 && rng.next() < 0.35) {
+      variant = rng.pick(exoticPool);
+    }
+
     cores.push({
       x: Math.round(pos.x),
       z: Math.round(pos.z),
-      variant: isHigh ? "high_value" : "standard",
+      variant,
     });
   }
   return cores;
@@ -297,7 +312,7 @@ export function generateProceduralMission(
   tier: number,
   seed?: number,
 ): MissionConfig {
-  const clampedTier = Math.max(1, Math.min(6, Math.round(tier)));
+  const clampedTier = Math.max(1, Math.min(12, Math.round(tier)));
   const spec = MISSION_TIER_SPECS[clampedTier - 1]!;
 
   const actualSeed = seed ?? Math.floor(Math.random() * 0x7fffffff);
@@ -314,7 +329,7 @@ export function generateProceduralMission(
   );
 
   // -- Cores
-  const cores = generateCores(rng, spec.coresOnMap, spec.highValueCore);
+  const cores = generateCores(rng, spec.coresOnMap, spec.highValueCore, clampedTier);
 
   // Collect occupied positions for spacing subsequent items
   const occupied: { x: number; z: number }[] = [

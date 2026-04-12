@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { sampleTerrainY } from "../mission/terrainSample";
 import { addSalvageLandmarks } from "./salvageLandmarks";
+import type { BiomeTheme } from "./biomeThemes";
 
 /**
  * Lightweight silhouettes + distant landmarks for horizon breakup and route read.
@@ -8,39 +9,40 @@ import { addSalvageLandmarks } from "./salvageLandmarks";
  */
 export function createDesertEnvironment(
   parent: THREE.Object3D,
-  terrain: THREE.Mesh
+  terrain: THREE.Mesh,
+  biome?: BiomeTheme,
 ): THREE.Group {
   const root = new THREE.Group();
   root.name = "DesertEnvironment";
   parent.add(root);
 
   const rock = new THREE.MeshStandardMaterial({
-    color: 0x52322c,
+    color: biome?.rockColor ?? 0x52322c,
     roughness: 0.94,
     metalness: 0.05,
   });
   const rockLight = new THREE.MeshStandardMaterial({
-    color: 0x6b4438,
+    color: biome?.rockLightColor ?? 0x6b4438,
     roughness: 0.92,
     metalness: 0.06,
   });
   const rockDark = new THREE.MeshStandardMaterial({
-    color: 0x3e2824,
+    color: biome?.rockDarkColor ?? 0x3e2824,
     roughness: 0.95,
     metalness: 0.04,
   });
   const hull = new THREE.MeshStandardMaterial({
-    color: 0x252226,
+    color: biome?.hullColor ?? 0x252226,
     roughness: 0.82,
     metalness: 0.48,
   });
   const hullRust = new THREE.MeshStandardMaterial({
-    color: 0x4a3228,
+    color: biome?.hullRustColor ?? 0x4a3228,
     roughness: 0.9,
     metalness: 0.22,
   });
   const debrisMat = new THREE.MeshStandardMaterial({
-    color: 0x3a3532,
+    color: biome?.debrisColor ?? 0x3a3532,
     roughness: 0.88,
     metalness: 0.35,
   });

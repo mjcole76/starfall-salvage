@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { CoreSpawn } from "./energyCores";
+import type { CoreSpawn, CorePickupVariant } from "./energyCores";
 import type { HazardTuning } from "./hazardConfig";
 import type { SalvageKind } from "./salvagePickups";
 
@@ -57,7 +57,7 @@ export type MissionConfig = {
  * Expanded into full `MissionConfig` by `buildResistanceTierMissions()`.
  */
 export type MissionTierSpec = {
-  readonly tier: 1 | 2 | 3 | 4 | 5 | 6;
+  readonly tier: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
   readonly title: string;
   /** Lower = faster collapse (storm “speed”). */
   readonly stormTimeLimitSec: number;
@@ -186,6 +186,13 @@ function coresForSpec(spec: MissionTierSpec): CoreSpawn[] {
   const layout = CORE_LAYOUTS[spec.coreSetIndex % CORE_LAYOUTS.length]!;
   const n = Math.min(spec.coresOnMap, layout.length);
   const out: CoreSpawn[] = [];
+
+  // Exotic core assignment for fixed layouts — deterministic per tier
+  const exoticSlots: Record<number, CorePickupVariant> = {};
+  if (spec.tier >= 2 && n >= 4) exoticSlots[1] = "phasing";
+  if (spec.tier >= 3 && n >= 4) exoticSlots[2] = "magnetic";
+  if (spec.tier >= 4 && n >= 5) exoticSlots[3] = "unstable";
+
   for (let i = 0; i < n; i++) {
     const p = layout[i]!;
     const isHigh =
@@ -193,7 +200,7 @@ function coresForSpec(spec: MissionTierSpec): CoreSpawn[] {
     out.push({
       x: p.x,
       z: p.z,
-      variant: isHigh ? "high_value" : "standard",
+      variant: isHigh ? "high_value" : (exoticSlots[i] ?? "standard"),
     });
   }
   return out;
@@ -482,6 +489,192 @@ const RESISTANCE_TIER_SPECS: readonly MissionTierSpec[] = [
       stormWallDpsBase: 10.5,
       thermalPulsePeriodSec: 2.35,
       droneIntegrityDpsWhileSpotted: 5.5,
+    },
+  },
+  {
+    tier: 7,
+    title: "Glass Sea",
+    stormTimeLimitSec: 145,
+    stormStartRadius: 92,
+    stormEndRadius: 7,
+    stormPressureExtra: 0.30,
+    radiationZoneCount: 1,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.10,
+    extractionHoldSec: 4.4,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 1,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 85,
+    jetFuelDrainMult: 1.10,
+    stormCenter: [-2, 2],
+    coreSetIndex: 0,
+    coresOnMap: 6,
+    requiredCoreCount: 5,
+    highValueCore: true,
+    extractionKey: "north",
+    hazardTuning: {
+      stormWallDpsBase: 11.0,
+      thermalPulsePeriodSec: 2.30,
+      droneIntegrityDpsWhileSpotted: 5.8,
+    },
+  },
+  {
+    tier: 8,
+    title: "Bioluminescent Jungle",
+    stormTimeLimitSec: 135,
+    stormStartRadius: 90,
+    stormEndRadius: 7,
+    stormPressureExtra: 0.32,
+    radiationZoneCount: 2,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.12,
+    extractionHoldSec: 4.5,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 1,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 82,
+    jetFuelDrainMult: 1.12,
+    stormCenter: [2, -2],
+    coreSetIndex: 1,
+    coresOnMap: 6,
+    requiredCoreCount: 5,
+    highValueCore: true,
+    extractionKey: "mid",
+    hazardTuning: {
+      stormWallDpsBase: 11.5,
+      thermalPulsePeriodSec: 2.25,
+      droneIntegrityDpsWhileSpotted: 6.0,
+    },
+  },
+  {
+    tier: 9,
+    title: "Magnetic Storm",
+    stormTimeLimitSec: 130,
+    stormStartRadius: 88,
+    stormEndRadius: 6,
+    stormPressureExtra: 0.34,
+    radiationZoneCount: 2,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.15,
+    extractionHoldSec: 4.6,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 0,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 80,
+    jetFuelDrainMult: 1.15,
+    stormCenter: [0, 0],
+    coreSetIndex: 2,
+    coresOnMap: 6,
+    requiredCoreCount: 6,
+    highValueCore: true,
+    extractionKey: "far",
+    hazardTuning: {
+      stormWallDpsBase: 12.0,
+      thermalPulsePeriodSec: 2.20,
+      droneIntegrityDpsWhileSpotted: 6.2,
+    },
+  },
+  {
+    tier: 10,
+    title: "Blood Moon",
+    stormTimeLimitSec: 125,
+    stormStartRadius: 86,
+    stormEndRadius: 6,
+    stormPressureExtra: 0.38,
+    radiationZoneCount: 2,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.20,
+    extractionHoldSec: 4.8,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 1,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 78,
+    jetFuelDrainMult: 1.18,
+    stormCenter: [0, 0],
+    coreSetIndex: 0,
+    coresOnMap: 6,
+    requiredCoreCount: 6,
+    highValueCore: true,
+    extractionKey: "far",
+    hazardTuning: {
+      stormWallDpsBase: 12.5,
+      thermalPulsePeriodSec: 2.15,
+      droneIntegrityDpsWhileSpotted: 6.5,
+    },
+  },
+  {
+    tier: 11,
+    title: "Frozen Hellscape",
+    stormTimeLimitSec: 115,
+    stormStartRadius: 84,
+    stormEndRadius: 5,
+    stormPressureExtra: 0.42,
+    radiationZoneCount: 2,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.25,
+    extractionHoldSec: 5.0,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 1,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 75,
+    jetFuelDrainMult: 1.22,
+    stormCenter: [0, 0],
+    coreSetIndex: 1,
+    coresOnMap: 6,
+    requiredCoreCount: 6,
+    highValueCore: true,
+    extractionKey: "far",
+    hazardTuning: {
+      stormWallDpsBase: 13.0,
+      thermalPulsePeriodSec: 2.10,
+      droneIntegrityDpsWhileSpotted: 7.0,
+    },
+  },
+  {
+    tier: 12,
+    title: "Singularity",
+    stormTimeLimitSec: 100,
+    stormStartRadius: 80,
+    stormEndRadius: 0,
+    stormPressureExtra: 0.50,
+    radiationZoneCount: 2,
+    heatVentZoneCount: 1,
+    droneCount: 2,
+    droneSpeed: 1.30,
+    extractionHoldSec: 5.0,
+    extractionArmSec: 4,
+    optionalSalvageCount: 5,
+    fuelPickupCount: 1,
+    repairKitCount: 1,
+    greedRareSalvage: true,
+    startingFuelPercent: 70,
+    jetFuelDrainMult: 1.30,
+    stormCenter: [0, 0],
+    coreSetIndex: 2,
+    coresOnMap: 6,
+    requiredCoreCount: 6,
+    highValueCore: true,
+    extractionKey: "far",
+    hazardTuning: {
+      stormWallDpsBase: 14.0,
+      thermalPulsePeriodSec: 2.00,
+      droneIntegrityDpsWhileSpotted: 7.5,
     },
   },
 ];

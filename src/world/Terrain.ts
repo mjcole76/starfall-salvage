@@ -1,10 +1,13 @@
 import * as THREE from "three";
+import type { BiomeTheme } from "./biomeThemes";
 
 /**
- * Red desert with wind dunes, carved slots, ridgelines, and rim falloff.
+ * Procedural terrain with wind dunes, carved slots, ridgelines, and rim falloff.
  * Single mesh — same collision as visuals.
+ *
+ * Accepts an optional `BiomeTheme` to tint vertex colours per-biome.
  */
-export function createTerrain(): THREE.Mesh {
+export function createTerrain(biome?: BiomeTheme): THREE.Mesh {
   const size = 220;
   const seg = 80;
   const geo = new THREE.PlaneGeometry(size, size, seg, seg);
@@ -13,6 +16,14 @@ export function createTerrain(): THREE.Mesh {
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
   const c = new Float32Array(pos.count * 3);
+
+  // Vertex-colour ramp — defaults match original red desert
+  const lowR = biome?.terrainLowR ?? 0.38;
+  const lowG = biome?.terrainLowG ?? 0.20;
+  const lowB = biome?.terrainLowB ?? 0.14;
+  const highR = biome?.terrainHighR ?? 0.70;
+  const highG = biome?.terrainHighG ?? 0.42;
+  const highB = biome?.terrainHighB ?? 0.34;
 
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
@@ -30,7 +41,7 @@ export function createTerrain(): THREE.Mesh {
 
     const cross = Math.sin(v.x * 0.042 - v.z * 0.028) * 0.95;
 
-    // Broad ridgelines + interference (canyon “spines”)
+    // Broad ridgelines + interference (canyon "spines")
     const wx = v.x * 0.0165;
     const wz = v.z * 0.0165;
     const ridgeA =
@@ -73,9 +84,9 @@ export function createTerrain(): THREE.Mesh {
     const hNorm = THREE.MathUtils.clamp(v.y * 0.11 + 0.46, 0, 1);
     const slotDark = THREE.MathUtils.clamp(0.55 - Math.abs(slotPhase) * 0.35, 0, 1);
     const dust = hNorm * 0.78 + slotDark * 0.22;
-    c[i * 3] = THREE.MathUtils.lerp(0.38, 0.7, dust);
-    c[i * 3 + 1] = THREE.MathUtils.lerp(0.2, 0.42, dust);
-    c[i * 3 + 2] = THREE.MathUtils.lerp(0.14, 0.34, dust);
+    c[i * 3] = THREE.MathUtils.lerp(lowR, highR, dust);
+    c[i * 3 + 1] = THREE.MathUtils.lerp(lowG, highG, dust);
+    c[i * 3 + 2] = THREE.MathUtils.lerp(lowB, highB, dust);
   }
 
   geo.setAttribute("color", new THREE.BufferAttribute(c, 3));
@@ -88,9 +99,8 @@ export function createTerrain(): THREE.Mesh {
     roughness: 0.93,
     metalness: 0.05,
     flatShading: false,
-    /** Guarantees non-zero albedo if direct/hemi light fails on a driver path. */
-    emissive: 0x1a1512,
-    emissiveIntensity: 0.14,
+    emissive: biome?.terrainEmissive ?? 0x1a1512,
+    emissiveIntensity: biome?.terrainEmissiveIntensity ?? 0.14,
   });
 
   const mesh = new THREE.Mesh(geo, mat);
