@@ -12,6 +12,7 @@ export type DeathCause =
   | "lightning"
   | "sentry_turret"
   | "burrower"
+  | "boss"
   | "time_expired"
   | "unknown";
 
@@ -150,6 +151,7 @@ export class StatsScreen {
         lightning: "LIGHTNING STRIKE",
         sentry_turret: "SENTRY TURRET",
         burrower: "BURROWER AMBUSH",
+        boss: "TIER BOSS",
         time_expired: "TIME EXPIRED",
       };
       const causeEl = document.createElement("div");

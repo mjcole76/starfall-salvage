@@ -134,6 +134,20 @@ import {
 } from "../mission/levelEnemies";
 import { getPilotClass, loadPilotClass } from "./pilotClass";
 import { PilotClassPanel } from "../ui/PilotClassPanel";
+import { TierIntroCard, biomeTagline } from "../ui/TierIntroCard";
+import { loadProgression, saveProgression } from "./progression";
+import { unlockAchievement } from "./achievements";
+import { loadActivePerks } from "./perks";
+import { AchievementsPanel } from "../ui/AchievementsPanel";
+import { EndingScreen } from "../ui/EndingScreen";
+import { generateEndlessMission } from "../mission/endlessMission";
+import {
+  createBoss,
+  tickBoss,
+  disposeBoss,
+  tierHasBoss,
+  type Boss,
+} from "../mission/bossExtraction";
 import {
   createDustStormState,
   tickDustStorm,
@@ -295,8 +309,26 @@ export class Game {
   private burrowers: Burrower[] = [];
   // Player slip momentum (ice)
   private slipVel = new THREE.Vector3();
+  // Hit-stop: freezes the world for N seconds when set
+  private hitStopLeft = 0;
   // Pilot class
   private pilotClassPanel!: PilotClassPanel;
+  // Tier intro card
+  private tierIntroCard!: TierIntroCard;
+  // Achievements + endings + boss
+  private achievementsPanel!: AchievementsPanel;
+  private endingScreen!: EndingScreen;
+  private boss: Boss | null = null;
+  private bossDefeated = false;
+  // Endless mode
+  private endlessLevel = 0; // 0 = not in endless; 1+ = endless level
+  private inEndless = false;
+  // Per-run trackers for achievements
+  private runStartCores = 0;
+  private runDamageTaken = 0;
+  private runMaxCombo = 1;
+  private runCoreVariantsCollected = new Set<string>();
+  private runUsedPilotIds = new Set<string>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -422,6 +454,9 @@ export class Game {
     this.activeMutators = loadMutators();
 
     this.pilotClassPanel = new PilotClassPanel(this.container);
+    this.tierIntroCard = new TierIntroCard(this.container);
+    this.achievementsPanel = new AchievementsPanel(this.container);
+    this.endingScreen = new EndingScreen(this.container);
     this.gamepadInput = new GamepadInput(this.container);
     this.objectiveGuide = new ObjectiveGuide(this.container);
     this.floatingText = new FloatingText(this.container);
@@ -465,6 +500,12 @@ export class Game {
       // Time dilation powerup — slow everything (including hazards) but not the player
       if (this.activePowerups.timeDilationLeft > 0) {
         dt *= TIME_DILATION_FACTOR;
+      }
+
+      // Hit-stop — freeze world for impact feel
+      if (this.hitStopLeft > 0) {
+        this.hitStopLeft -= 1 / 60; // approx real-time decrement
+        dt *= 0.05;
       }
 
       // Update voice barks text animation always
@@ -522,7 +563,17 @@ export class Game {
         const corePick = tryCollectEnergyCores(this.cores, this.player.root.position);
         if (corePick.picked > 0) {
           const mult = this.combo.pickup();
-          const pts = corePick.scoreGain * mult;
+          if (mult > this.runMaxCombo) this.runMaxCombo = mult;
+          // Track which core variants were collected this run
+          for (const c of this.cores) {
+            if (c.collected) this.runCoreVariantsCollected.add(c.variant);
+          }
+          const prog = loadProgression();
+          prog.totalCoresCollected += corePick.picked;
+          saveProgression(prog);
+
+          const corePerkMult = loadActivePerks().includes("core_value") ? 1.25 : 1;
+          const pts = corePick.scoreGain * mult * corePerkMult;
           this.objectiveScore += pts;
           this.sfx.corePickup();
           this.particles.burstCore(this.player.root.position);
@@ -541,6 +592,7 @@ export class Game {
           this.particles.burstCore(pos);
           this.postfx.shake(0.35, 0.4);
           this.sfx.heatPulse();
+          this.hitStop(0.12);
           this.floatingText.spawnCenter("CORE DETONATED!", "#ff2222");
           // Damage player based on distance
           const dist = this.player.root.position.distanceTo(pos);
@@ -653,6 +705,7 @@ export class Game {
           if (lt.struckNearPlayer) {
             this.postfx.shake(0.4, 0.3);
             this.sfx.heatPulse();
+            this.hitStop(0.10);
             if (lt.damage > 5) this.lastDeathCause = "lightning" as DeathCause;
           }
         }
@@ -715,6 +768,14 @@ export class Game {
           hazardDamage += br.damage;
           if (br.popOut) this.postfx.shake(0.22, 0.2);
           if (br.damage > 5) this.lastDeathCause = "burrower" as DeathCause;
+        }
+
+        // Boss
+        if (this.boss) {
+          const bt = tickBoss(this.boss, playerPos, dt, cloaked);
+          hazardDamage += bt.damage;
+          if (bt.phaseChanged) this.postfx.shake(0.15, 0.2);
+          if (bt.damage > 5) this.lastDeathCause = "boss" as DeathCause;
         }
 
         // Apply hazard damage (respect dash invulnerability + cloak)
@@ -869,6 +930,7 @@ export class Game {
           ? 0
           : hz.integrityLoss + wallDps * dt + droneTick.integrityLoss + dustTick.integrityLoss;
         this.integrity = Math.max(0, this.integrity - totalLoss);
+        this.runDamageTaken += totalLoss;
 
         // Track highest damage source for death cause
         if (totalLoss > 0) {
@@ -1266,7 +1328,12 @@ export class Game {
   private spawnVariant(index: number): void {
     this.teardownPickups();
 
-    if (this.useProceduralMissions) {
+    if (this.inEndless) {
+      this.variant = generateEndlessMission(
+        Math.max(1, this.endlessLevel + 1),
+        Date.now(),
+      );
+    } else if (this.useProceduralMissions) {
       this.variant = generateProceduralMission(
         Math.min(12, Math.max(1, index + 1)),
         Date.now()
@@ -1377,6 +1444,20 @@ export class Game {
     this.activePowerups = createActivePowerups();
     this.slipVel.set(0, 0, 0);
     this.player?.setExternalSpeedMult?.(1);
+
+    // --- Boss extraction ---
+    this.boss = null;
+    this.bossDefeated = false;
+    if (tierHasBoss(tier) && this.variant) {
+      const isFinal = tier === 12;
+      this.boss = createBoss(
+        this.terrain,
+        this.scene,
+        this.variant.extraction[0],
+        this.variant.extraction[1],
+        isFinal,
+      );
+    }
   }
 
   private teardownTierExtras(): void {
@@ -1410,6 +1491,10 @@ export class Game {
     this.sentryTurrets = [];
     for (const b of this.burrowers) disposeGroup(b.group);
     this.burrowers = [];
+    if (this.boss) {
+      disposeBoss(this.boss, this.scene);
+      this.boss = null;
+    }
   }
 
   /**
@@ -1467,13 +1552,18 @@ export class Game {
 
   private applyPlayerFromVariant(): void {
     const ups = this.getUpgradeMultipliers();
-    this.maxIntegrity = BASE_MAX_INTEGRITY + ups.armor;
+    const perks = loadActivePerks();
+    let armor = ups.armor;
+    let speed = ups.speed;
+    if (perks.includes("armor_plate")) armor += 25;
+    if (perks.includes("swift_boots")) speed *= 1.10;
+    this.maxIntegrity = BASE_MAX_INTEGRITY + armor;
 
     this.player.resetMission(this.variant.playerStart, 0, {
       fuelPercent: this.variant.startingFuelPercent,
       jetFuelDrainMult: this.variant.jetFuelDrainMult * ups.jetEff,
       fuelCapMult: ups.fuelCap,
-      speedMult: ups.speed,
+      speedMult: speed,
     });
     this.dash.reset();
     this.snapPlayerToTerrain();
@@ -1570,6 +1660,7 @@ export class Game {
       this.ambience.duckMusic(0.25, 0.6);
       this.sfx.successSting();
       this.postfx.shake(0.2, 0.4);
+      this.handleSuccessfulExtraction();
 
       // Calculate scores and show stats
       const timeBonus = Math.max(0, Math.floor((this.stormTimeLimit - this.missionElapsed) * 15));
@@ -1676,10 +1767,62 @@ export class Game {
         this.keyboardHelp.toggle();
         return;
       }
+
+      // --- Pilot class panel (works any time) ---
+      if (e.code === "KeyP" && this.outcome === "playing") {
+        this.pilotClassPanel.toggle();
+        return;
+      }
+
+      // --- Achievements panel (works any time) ---
+      if (e.code === "KeyK") {
+        this.achievementsPanel.toggle();
+        return;
+      }
+
+      // --- Endless mode toggle (works any time, only after campaign complete) ---
+      if (e.code === "Backquote") {
+        const prog = loadProgression();
+        if (prog.campaignComplete) {
+          this.inEndless = !this.inEndless;
+          if (this.inEndless) {
+            this.endlessLevel = 0;
+            this.floatingText?.spawnCenter("ENDLESS MODE ENABLED", "#cc44ff");
+          } else {
+            this.floatingText?.spawnCenter("CAMPAIGN MODE", "#88ccff");
+          }
+        } else {
+          this.floatingText?.spawnCenter("BEAT TIER 12 TO UNLOCK ENDLESS", "#ff8844");
+        }
+        return;
+      }
+
+      // --- Level-select cheat: jump to any tier (works any time) ---
+      // 1-9 → tiers 1-9, 0 → tier 10, Minus → 11, Equal → 12
+      if (!this.settingsMenu.isVisible() && !this.upgradeShop.isVisible()) {
+        const tierMap: Record<string, number> = {
+          Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5,
+          Digit6: 6, Digit7: 7, Digit8: 8, Digit9: 9, Digit0: 10,
+          Minus: 11, Equal: 12,
+        };
+        const tier = tierMap[e.code];
+        if (tier !== undefined) {
+          this.jumpToTier(tier - 1);
+          return;
+        }
+      }
       if (e.code === "Escape" && !this.keyboardHelp.isVisible()) {
         // Close any open overlay first, in priority order
         if (this.pilotClassPanel?.isVisible()) {
           this.pilotClassPanel.hide();
+          return;
+        }
+        if (this.achievementsPanel?.isVisible()) {
+          this.achievementsPanel.hide();
+          return;
+        }
+        if (this.endingScreen?.isVisible()) {
+          this.endingScreen.hide();
           return;
         }
         if (this.mutatorPanel.isVisible()) {
@@ -1706,7 +1849,7 @@ export class Game {
       }
 
       // Handle shop/leaderboard/mutator closures
-      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible() || this.mutatorPanel.isVisible() || this.onlineLeaderboard.isVisible() || this.pilotClassPanel?.isVisible()) return;
+      if (this.upgradeShop.isVisible() || this.leaderboard.isVisible() || this.mutatorPanel.isVisible() || this.onlineLeaderboard.isVisible() || this.pilotClassPanel?.isVisible() || this.achievementsPanel?.isVisible() || this.endingScreen?.isVisible()) return;
       if (this.settingsMenu.isVisible() || this.keyboardHelp.isVisible()) return;
 
       if (this.outcome === "playing") return;
@@ -1747,11 +1890,85 @@ export class Game {
         this.beginDailyChallenge();
         return;
       }
-      if (e.code === "KeyP") {
-        this.pilotClassPanel.toggle();
-        return;
-      }
     });
+  }
+
+  /**
+   * Called when the player successfully extracts. Updates lifetime progression,
+   * unlocks achievements, advances endless level, shows ending screen on T12.
+   */
+  private handleSuccessfulExtraction(): void {
+    const prog = loadProgression();
+    prog.totalExtractions += 1;
+
+    if (this.inEndless) {
+      // Endless: increment, gate achievements
+      this.endlessLevel += 1;
+      if (this.endlessLevel > prog.highestEndlessTier) {
+        prog.highestEndlessTier = this.endlessLevel;
+      }
+      if (this.endlessLevel >= 5) unlockAchievement("endless_5");
+      if (this.endlessLevel >= 10) unlockAchievement("endless_10");
+    } else {
+      // Campaign tier
+      const tierBeaten = this.variantIndex + 1;
+      if (tierBeaten > prog.highestTierBeaten) prog.highestTierBeaten = tierBeaten;
+      if (tierBeaten >= 3) unlockAchievement("tier_3_done");
+      if (tierBeaten >= 6) unlockAchievement("tier_6_done");
+      if (tierBeaten >= 9) unlockAchievement("tier_9_done");
+      if (tierBeaten === 12) {
+        const wasFirst = !prog.campaignComplete;
+        prog.campaignComplete = true;
+        unlockAchievement("tier_12_done");
+        saveProgression(prog);
+        if (wasFirst) {
+          // Trigger ending screen, then enable endless
+          this.endingScreen.show(() => {
+            this.inEndless = true;
+            this.endlessLevel = 0;
+          });
+        }
+      }
+    }
+
+    // First extract
+    if (prog.totalExtractions === 1) unlockAchievement("first_extract");
+    if (prog.totalExtractions >= 10) unlockAchievement("ten_extracts");
+
+    // Damage-related
+    if (this.runDamageTaken < 0.5) unlockAchievement("no_damage_run");
+    if (this.missionElapsed < 60) unlockAchievement("speedrun_sub_60");
+
+    // Combo
+    if (this.runMaxCombo >= 4) unlockAchievement("max_combo");
+
+    // Core variety
+    if (this.runCoreVariantsCollected.size >= 5) unlockAchievement("all_core_types");
+
+    // Pilot variety
+    this.runUsedPilotIds.add(loadPilotClass());
+    if (this.runUsedPilotIds.size >= 4) unlockAchievement("all_pilots");
+
+    // Boss kill (extracted while boss was active counts as defeating it)
+    if (this.boss) unlockAchievement("boss_killed");
+
+    // Cores total
+    if (prog.totalCoresCollected >= 50) unlockAchievement("fifty_cores");
+
+    saveProgression(prog);
+  }
+
+  /** Trigger a hit-stop (freeze frame). Stacks: keeps the longer of current vs new. */
+  private hitStop(seconds: number): void {
+    if (seconds > this.hitStopLeft) this.hitStopLeft = seconds;
+  }
+
+  /** Jump directly to a specific tier (0-indexed). Used by level-select hotkeys. */
+  private async jumpToTier(index: number): Promise<void> {
+    const n = MISSION_CONFIGS.length;
+    this.variantIndex = ((index % n) + n) % n;
+    await this.beginFreshMission(false, this.useProceduralMissions);
+    this.floatingText?.spawnCenter(`TIER ${index + 1}: ${this.currentBiome.name.toUpperCase()}`, "#88ccff");
   }
 
   private async beginFreshMission(advanceVariant: boolean, procedural: boolean): Promise<void> {
@@ -1776,6 +1993,12 @@ export class Game {
     this.prevCoreCount = 0;
     this.integrityLowBarkFired = false;
     this.fuelLowBarkFired = false;
+
+    // Per-run achievement trackers reset
+    this.runDamageTaken = 0;
+    this.runMaxCombo = 1;
+    this.runCoreVariantsCollected = new Set<string>();
+    this.hitStopLeft = 0;
 
     this.spawnVariant(this.variantIndex);
 
@@ -1827,6 +2050,19 @@ export class Game {
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");
+    if (this.inEndless) {
+      this.tierIntroCard?.show(
+        `ENDLESS +${this.endlessLevel + 1}`,
+        this.currentBiome.name,
+        "There is no extraction. Only the next storm.",
+      );
+    } else {
+      this.tierIntroCard?.show(
+        `TIER ${this.variantIndex + 1}`,
+        this.currentBiome.name,
+        biomeTagline(this.variantIndex),
+      );
+    }
   }
 
   private async beginDailyChallenge(): Promise<void> {
@@ -1897,6 +2133,19 @@ export class Game {
 
     await this.transition.fadeIn(0.4);
     this.barks.play("missionStart");
+    if (this.inEndless) {
+      this.tierIntroCard?.show(
+        `ENDLESS +${this.endlessLevel + 1}`,
+        this.currentBiome.name,
+        "There is no extraction. Only the next storm.",
+      );
+    } else {
+      this.tierIntroCard?.show(
+        `TIER ${this.variantIndex + 1}`,
+        this.currentBiome.name,
+        biomeTagline(this.variantIndex),
+      );
+    }
   }
 
   private onResize(): void {
